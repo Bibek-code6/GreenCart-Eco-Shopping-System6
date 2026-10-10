@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Green Cart - Eco Shopping System</title>
+    <!-- AlaSQL Library for In-Browser SQL Database -->
+    <script src="https://jsdelivr.net"></script>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        body { background-color: #f1f8e9; color: #333; padding: 15px; }
+        .container { max-width: 800px; margin: 0 auto; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
+        h1, h2, h3 { color: #2e7d32; text-align: center; margin-bottom: 10px; }
+        .section { margin-bottom: 25px; padding: 15px; border: 1px solid #c8e6c9; border-radius: 8px; background: #fafafa; }
+        .auth-box { display: flex; gap: 10px; justify-content: center; margin-top: 10px; }
+        input, button { padding: 10px; border-radius: 6px; border: 1px solid #a5d6a7; outline: none; font-size: 14px; }
+        button { background: #4caf50; color: white; font-weight: bold; cursor: pointer; border: none; }
+        button:hover { background: #388e3c; }
+        .product-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px; margin-top: 15px; }
+        .product-card { background: white; border: 2px solid #e0e0e0; border-radius: 8px; padding: 12px; text-align: center; transition: 0.3s; }
+        .product-card.good { border-color: #81c784; background: #f1f8e9; }
+        .product-card.bad { border-color: #e57373; background: #ffebee; }
+        .badge { display: inline-block; padding: 3px 8px; border-radius: 12px; font-size: 11px; font-weight: bold; color: white; margin-bottom: 5px; }
+        .badge.eco { background: #2e7d32; }
+        .badge.harmful { background: #d32f2f; }
+        .dashboard { display: flex; justify-content: space-around; background: #e8f5e9; padding: 15px; border-radius: 8px; font-size: 15px; font-weight: bold; }
+        .alert-box { background: #fff9c4; border-left: 5px solid #fbc02d; padding: 12px; margin-top: 15px; border-radius: 4px; display: none; text-align: left; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>🌱 Green Cart: Eco-Shopping System</h1>
+    <p style="text-align:center; color: #666; margin-bottom: 20px;">SQL Database Driven Sustainable E-Commerce Project</p>
+
+    <!-- 1. User Authentication Section -->
+    <div class="section" id="auth-section">
+        <h3>👤 User Login / Registration</h3>
+        <div class="auth-box">
+            <input type="text" id="username" placeholder="Enter your name...">
+            <button onclick="loginUser()">Login</button>
+        </div>
+        <p id="welcome-msg" style="text-align:center; margin-top:10px; font-weight:bold; color:#1b5e20;"></p>
+    </div>
+
+    <!-- 2. Live Dashboard Scores -->
+    <div class="section">
+        <h3>📊 Your Live Eco-Dashboard</h3>
+        <div class="dashboard">
+            <div>🛒 Total Items: <span id="cart-count">0</span></div>
+            <div>💨 Total CO2: <span id="total-carbon">0</span>g</div>
+            <div>🪙 Green Rewards: <span id="green-points">0</span></div>
+        </div>
+        <!-- Smart Suggestion Alert Box -->
+        <div class="alert-box" id="suggestion-box"></div>
+    </div>
+
+    <!-- 3. Product Listing -->
+    <div class="section">
+        <h3>🛍️ Available Products</h3>
+        <div class="product-grid" id="product-listing"></div>
+    </div>
+</div>
+
+<script>
+    let currentUser = null;
+
+    // --- STEP 1: SQL DATABASE SETUP (AlaSQL) ---
+    // Creating Products Table
+    alasql("CREATE TABLE Products (id INT, name STRING, price INT, carbon INT, rating INT, is_eco INT)");
+    alasql("INSERT INTO Products VALUES (1, 'Plastic Water Bottle', 20, 150, 1, 0)");
+    alasql("INSERT INTO Products VALUES (2, 'Steel Water Bottle', 180, 15, 5, 1)");
+    alasql("INSERT INTO Products VALUES (3, 'Plastic Carry Bag', 5, 90, 1, 0)");
+    alasql("INSERT INTO Products VALUES (4, 'Jute Shopping Bag', 50, 5, 5, 1)");
+
+    // Creating Users Table to store sustainability points
+    alasql("CREATE TABLE Users (username STRING, points INT)");
+    
+    // Creating Cart Table for active checkout session
+    alasql("CREATE TABLE Cart (id INT, name STRING, carbon INT, is_eco INT)");
+
+    // --- STEP 2: DISPLAY PRODUCTS FROM SQL ---
+    function displayProducts() {
+        const products = alasql("SELECT * FROM Products");
+        const grid = document.getElementById('product-listing');
+        grid.innerHTML = '';
+
+        products.forEach(p => {
+            const isEco = p.is_eco === 1;
+            grid.innerHTML += `
+                <div class="product-card ${isEco ? 'good' : 'bad'}">
+                    <span class="badge ${isEco ? 'eco' : 'harmful'}">${isEco ? 'Eco-Friendly' : 'Harmful'}</span>
+                    <h4>${p.name}</h4>
+                    <p style="font-weight:bold; margin: 5px 0;">₹${p.price}</p>
+                    <p style="font-size:12px; color:#555;">CO2: ${p.carbon}g | ${'⭐'.repeat(p.rating)}</p>
+                    <button style="margin-top:8px; width:100%;" onclick="addToCart(${p.id})">Add to Cart</button>
+                </div>
+            `;
+        });
+    }
+
+    // --- STEP 3: USER LOGIN LOGIC ---
+    function loginUser() {
+        const name = document.getElementById('username').value.trim();
+        if (!name) { alert("Please enter your name!"); return; }
+
+        currentUser = name;
+        // SQL query to check if the user already exists
+        const userCheck = alasql("SELECT * FROM Users WHERE username = ?", [name]);
+        if (userCheck.length === 0) {
+            alasql("INSERT INTO Users VALUES (?, 0)", [name]);
+        }
+
+        document.getElementById('welcome-msg').innerText = `👋 Welcome, ${name}! Your sustainable journey has started.`;
+        updateDashboard();
+    }
+
+    // --- STEP 4: ADD TO CART & ECO LOGIC ---
+    function addToCart(productId) {
+        if (!currentUser) {
+            alert("⚠️ Please login before adding items to the cart!");
+            return;
+        }
+
+        // SQL SELECT query to fetch selected product details
+        const product = alasql("SELECT * FROM Products WHERE id = ?", [productId])[0];
+        
+        // SQL INSERT query to insert item into the cart table
+        alasql("INSERT INTO Cart VALUES (?, ?, ?, ?)", [product.id, product.name, product.carbon, product.is_eco]);
+
+        // Reward the user with 10 Green Points via SQL UPDATE if they buy eco-friendly items
+        if (product.is_eco === 1) {
+            alasql("UPDATE Users SET points = points + 10 WHERE username = ?", [currentUser]);
+        }
+
+        // Smart Recommendation AI Logic
+        const alertBox = document.getElementById('suggestion-box');
+        if (productId === 1) { // Plastic Bottle selected
+            alertBox.style.display = "block";
+            alertBox.innerHTML = `💡 <b>Smart Tip:</b> You selected a Plastic Bottle. Opting for a <b>'Steel Water Bottle'</b> instead can save up to <b>135g of CO2 emissions</b> and reward you with +10 Green Points!`;
+        } else if (productId === 3) { // Plastic Bag selected
+            alertBox.style.display = "block";
+            alertBox.innerHTML = `💡 <b>Smart Tip:</b> Swap the Plastic Carry Bag for a <b>'Jute Shopping Bag'</b>. It is 100% biodegradable and prevents severe plastic pollution.`;
+        } else {
+            alertBox.style.display = "none";
+        }
+
+        updateDashboard();
+    }
+
+    // --- STEP 5: UPDATE LIVE DASHBOARD VIA SQL AGGREGATIONS ---
+    function updateDashboard() {
+        if (!currentUser) return;
+
+        // Utilizing SQL Aggregation Functions (COUNT, SUM) for calculations
+        const totalItems = alasql("SELECT COUNT(*) AS cnt FROM Cart")[0].cnt;
+        const totalCarbon = alasql("SELECT SUM(carbon) AS total FROM Cart")[0].total;
+        const userPoints = alasql("SELECT points FROM Users WHERE username = ?", [currentUser])[0].points;
+
+        document.getElementById('cart-count').innerText = totalItems;
+        document.getElementById('total-carbon').innerText = totalCarbon || 0;
+        document.getElementById('green-points').innerText = userPoints;
+    }
+
+    // Initial trigger to fetch and display products on page load
+    displayProducts();
+</script>
+
+</body>
+</html>
